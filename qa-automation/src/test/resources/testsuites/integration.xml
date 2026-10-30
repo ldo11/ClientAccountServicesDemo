@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="FinTech Integration Automation Suite" parallel="classes" thread-count="2">
+    <listeners>
+        <listener class-name="com.fintech.automation.listeners.TestListener"/>
+    </listeners>
+
+    <test name="FinTech Live Central Bank Integration Tests">
+        <parameter name="browser" value="chrome"/>
+        <groups>
+            <run>
+                <include name="integration"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.fintech.automation.tests.CentralBankIntegrationTest"/>
+        </classes>
+    </test>
+</suite>

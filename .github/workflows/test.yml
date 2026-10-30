@@ -1,0 +1,311 @@
+name: FinTech Multi-Environment CI/CD & Automated Rollback
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Target Environment'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - test
+          - intg
+          - uat
+
+jobs:
+  # ============================================================================
+  # ENVIRONMENT 1: TEST
+  # ============================================================================
+  env-test:
+    name: "1. TEST Env (Mock Central Bank + Smoke + Unit + Functional)"
+    if: inputs.target_env == 'all' || inputs.target_env == 'test' || github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      APP_ENV: 'test'
+      PORT: '5000'
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || 'charlotte_fintech_super_secret_key_2026' }}
+      API_BASE_URL: 'http://localhost:5000/api'
+      UI_BASE_URL: 'http://localhost:3000'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+          cache-dependency-path: 'qa-automation/pom.xml'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Backup Artifacts
+        run: |
+          mkdir -p backups/test
+          cp -r backend backups/test/
+          cp -r frontend backups/test/
+
+      - name: Deploy & Start Stack (test)
+        run: |
+          cd backend && npm ci || npm install
+          APP_ENV=test PORT=5000 nohup npm start > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
+          cd ../frontend && npm ci || npm install
+          nohup npx vite --port 3000 --strictPort --host 0.0.0.0 > ../frontend.log 2>&1 &
+          echo $! > ../frontend.pid
+          cd ..
+          for i in $(seq 1 30); do
+            if curl -sf "${API_BASE_URL}/health" | grep -q '"status":"UP"'; then break; fi
+            sleep 2
+          done
+
+      - name: Smoke Test Gate (test)
+        id: smoke-test
+        working-directory: qa-automation
+        run: |
+          mvn clean test \
+            -Denv=test \
+            -Dgroups=smoke \
+            -Dbrowser=chrome \
+            -Dheadless=true \
+            -DsuiteXmlFile="src/test/resources/testsuites/smoke.xml"
+
+      - name: Automated Rollback on Smoke Failure (test)
+        if: failure() && steps.smoke-test.outcome == 'failure'
+        run: |
+          echo "SMOKE TEST FAILED IN TEST ENV! Executing automated rollback..."
+          ./scripts/rollback.sh test backups/test
+
+      - name: Backend Unit Tests (Interest Rate Margin Calculation)
+        run: |
+          cd backend
+          npm test
+
+      - name: QA Functional Test Suite (test)
+        working-directory: qa-automation
+        run: |
+          mvn test \
+            -Denv=test \
+            -Dgroups=functional \
+            -Dbrowser=chrome \
+            -Dheadless=true \
+            -DsuiteXmlFile="src/test/resources/testsuites/functional.xml"
+
+      - name: Upload ExtentReport-test.html
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExtentReport-test
+          path: qa-automation/target/reports/ExtentReport-test.html
+          retention-days: 14
+
+      - name: Teardown Services
+        if: always()
+        run: |
+          [ -f backend.pid ] && kill $(cat backend.pid) 2>/dev/null || true
+          [ -f frontend.pid ] && kill $(cat frontend.pid) 2>/dev/null || true
+
+  # ============================================================================
+  # ENVIRONMENT 2: INTG
+  # ============================================================================
+  env-intg:
+    name: "2. INTG Env (Live Central Bank Sandbox + Smoke + Integration)"
+    needs: [env-test]
+    if: inputs.target_env == 'all' || inputs.target_env == 'intg' || github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      APP_ENV: 'intg'
+      PORT: '5000'
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || 'charlotte_fintech_super_secret_key_2026' }}
+      API_BASE_URL: 'http://localhost:5000/api'
+      UI_BASE_URL: 'http://localhost:3000'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+          cache-dependency-path: 'qa-automation/pom.xml'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Backup Artifacts
+        run: |
+          mkdir -p backups/intg
+          cp -r backend backups/intg/
+          cp -r frontend backups/intg/
+
+      - name: Deploy & Start Stack (intg)
+        run: |
+          cd backend && npm ci || npm install
+          APP_ENV=intg PORT=5000 nohup npm start > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
+          cd ../frontend && npm ci || npm install
+          nohup npx vite --port 3000 --strictPort --host 0.0.0.0 > ../frontend.log 2>&1 &
+          echo $! > ../frontend.pid
+          cd ..
+          for i in $(seq 1 30); do
+            if curl -sf "${API_BASE_URL}/health" | grep -q '"status":"UP"'; then break; fi
+            sleep 2
+          done
+
+      - name: Smoke Test Gate (intg)
+        id: smoke-intg
+        working-directory: qa-automation
+        run: |
+          mvn clean test \
+            -Denv=intg \
+            -Dgroups=smoke \
+            -Dbrowser=chrome \
+            -Dheadless=true \
+            -DsuiteXmlFile="src/test/resources/testsuites/smoke.xml"
+
+      - name: Automated Rollback on Smoke Failure (intg)
+        if: failure() && steps.smoke-intg.outcome == 'failure'
+        run: |
+          echo "SMOKE TEST FAILED IN INTG ENV! Executing automated rollback..."
+          ./scripts/rollback.sh intg backups/intg
+
+      - name: QA Live Integration Test Suite (intg)
+        working-directory: qa-automation
+        run: |
+          mvn test \
+            -Denv=intg \
+            -Dgroups=integration \
+            -Dbrowser=chrome \
+            -Dheadless=true \
+            -DsuiteXmlFile="src/test/resources/testsuites/integration.xml"
+
+      - name: Upload ExtentReport-intg.html
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExtentReport-intg
+          path: qa-automation/target/reports/ExtentReport-intg.html
+          retention-days: 14
+
+      - name: Teardown Services
+        if: always()
+        run: |
+          [ -f backend.pid ] && kill $(cat backend.pid) 2>/dev/null || true
+          [ -f frontend.pid ] && kill $(cat frontend.pid) 2>/dev/null || true
+
+  # ============================================================================
+  # ENVIRONMENT 3: UAT
+  # ============================================================================
+  env-uat:
+    name: "3. UAT Env (Pre-Production Gate - Smoke ONLY)"
+    needs: [env-intg]
+    if: inputs.target_env == 'all' || inputs.target_env == 'uat' || github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      APP_ENV: 'uat'
+      PORT: '5000'
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET || 'charlotte_fintech_super_secret_key_2026' }}
+      API_BASE_URL: 'http://localhost:5000/api'
+      UI_BASE_URL: 'http://localhost:3000'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+          cache-dependency-path: 'qa-automation/pom.xml'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Backup Artifacts
+        run: |
+          mkdir -p backups/uat
+          cp -r backend backups/uat/
+          cp -r frontend backups/uat/
+
+      - name: Deploy & Start Stack (uat)
+        run: |
+          cd backend && npm ci || npm install
+          APP_ENV=uat PORT=5000 nohup npm start > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
+          cd ../frontend && npm ci || npm install
+          nohup npx vite --port 3000 --strictPort --host 0.0.0.0 > ../frontend.log 2>&1 &
+          echo $! > ../frontend.pid
+          cd ..
+          for i in $(seq 1 30); do
+            if curl -sf "${API_BASE_URL}/health" | grep -q '"status":"UP"'; then break; fi
+            sleep 2
+          done
+
+      - name: Smoke Test Gate ONLY (uat)
+        id: smoke-uat
+        working-directory: qa-automation
+        run: |
+          mvn clean test \
+            -Denv=uat \
+            -Dgroups=smoke \
+            -Dbrowser=chrome \
+            -Dheadless=true \
+            -DsuiteXmlFile="src/test/resources/testsuites/smoke.xml"
+
+      - name: Automated Rollback on Smoke Failure (uat)
+        if: failure() && steps.smoke-uat.outcome == 'failure'
+        run: |
+          echo "SMOKE TEST FAILED IN UAT ENV! Executing automated rollback..."
+          ./scripts/rollback.sh uat backups/uat
+
+      - name: Upload ExtentReport-uat.html
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExtentReport-uat
+          path: qa-automation/target/reports/ExtentReport-uat.html
+          retention-days: 14
+
+      - name: Teardown Services
+        if: always()
+        run: |
+          [ -f backend.pid ] && kill $(cat backend.pid) 2>/dev/null || true
+          [ -f frontend.pid ] && kill $(cat frontend.pid) 2>/dev/null || true

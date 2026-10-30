@@ -1,0 +1,21 @@
+# Node / JS
+node_modules/
+dist/
+.env
+
+# Java / Maven
+qa-automation/target/
+*.iml
+.idea/
+.vscode/
+
+# Logs & PIDs
+*.log
+*.pid
+
+# OS
+.DS_Store
+
+
+# Agent folder
+agent/

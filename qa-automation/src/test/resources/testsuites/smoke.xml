@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="FinTech Smoke Automation Suite" parallel="classes" thread-count="2">
+    <listeners>
+        <listener class-name="com.fintech.automation.listeners.TestListener"/>
+    </listeners>
+
+    <test name="FinTech Core Smoke Tests">
+        <parameter name="browser" value="chrome"/>
+        <groups>
+            <run>
+                <include name="smoke"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.fintech.automation.tests.SmokeTestSuite"/>
+        </classes>
+    </test>
+</suite>

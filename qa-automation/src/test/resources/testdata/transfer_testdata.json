@@ -1,0 +1,71 @@
+{
+  "e2eTransferScenario": {
+    "testName": "E2E Hybrid Fund Transfer - Checking ($1500) to Savings ($500)",
+    "client": {
+      "usernamePrefix": "qa_e2e_transfer",
+      "password": "FinTech@2026!",
+      "mobile": "704-555-1100",
+      "address": "100 North Tryon St, Charlotte, NC 28202",
+      "initialCheckingBalance": 1500.00,
+      "initialSavingsBalance": 500.00
+    },
+    "transfer": {
+      "fromAccountType": "CHECKING",
+      "toAccountType": "SAVINGS",
+      "amount": "300.00",
+      "expectedSourceBalance": "1200.00",
+      "expectedDestinationBalance": "800.00"
+    }
+  },
+  "dataDrivenTransfers": [
+    {
+      "scenarioName": "Valid Transfer Checking to Savings ($250.00)",
+      "client": {
+        "usernamePrefix": "qa_ddt_valid",
+        "password": "FinTech@2026!",
+        "mobile": "704-555-2201",
+        "address": "201 South College St, Charlotte, NC 28244",
+        "initialCheckingBalance": 1000.00,
+        "initialSavingsBalance": 1000.00
+      },
+      "fromAccountType": "CHECKING",
+      "toAccountType": "SAVINGS",
+      "amount": "250.00",
+      "expectSuccess": true,
+      "expectedMessage": "Transfer completed successfully",
+      "expectedCheckingBalance": "750.00",
+      "expectedSavingsBalance": "1250.00"
+    },
+    {
+      "scenarioName": "Insufficient Funds Transfer ($5000.00 from $1000.00 Checking)",
+      "client": {
+        "usernamePrefix": "qa_ddt_insuff",
+        "password": "FinTech@2026!",
+        "mobile": "704-555-2202",
+        "address": "301 South Tryon St, Charlotte, NC 28282",
+        "initialCheckingBalance": 1000.00,
+        "initialSavingsBalance": 1000.00
+      },
+      "fromAccountType": "CHECKING",
+      "toAccountType": "SAVINGS",
+      "amount": "5000.00",
+      "expectSuccess": false,
+      "expectedMessage": "Insufficient funds",
+      "expectedCheckingBalance": "1000.00",
+      "expectedSavingsBalance": "1000.00"
+    }
+  ],
+  "profileUpdateScenario": {
+    "testName": "Update Client Mobile and Residential Address",
+    "client": {
+      "usernamePrefix": "qa_profile_upd",
+      "password": "FinTech@2026!",
+      "mobile": "704-555-3300",
+      "address": "400 East Stonewall St, Charlotte, NC 28202",
+      "initialCheckingBalance": 1000.00,
+      "initialSavingsBalance": 1000.00
+    },
+    "updatedMobile": "980-555-9988",
+    "updatedAddress": "550 South Caldwell St, Suite 1400, Charlotte, NC 28202"
+  }
+}
