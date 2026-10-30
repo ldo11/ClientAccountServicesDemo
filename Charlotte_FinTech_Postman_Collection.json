@@ -1,0 +1,735 @@
+{
+  "info": {
+    "_postman_id": "8e44b190-7c4d-4d6e-91c8-f5a60b109c21",
+    "name": "Charlotte FinTech Core Banking API — QA Automation Suite",
+    "description": "End-to-End Postman API Collection for the Charlotte FinTech Core Banking System.\n\nIncludes:\n1. System Health & Central Bank Regulatory API\n2. Authentication (Register & Login with dynamic variable capture)\n3. Client Profile Management (GET, PUT)\n4. Account Management & ACID Fund Transfers (GET, POST, Transfer)\n5. Negative & Security Test Scenarios (400, 401, 403)\n6. Cleanup (DELETE Client)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "jwtToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "postman_qa_user",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "Password123!",
+      "type": "string"
+    },
+    {
+      "key": "checkingAccountId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "savingsAccountId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. System & Regulatory",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Service and Database are UP', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('UP');",
+                  "    pm.expect(jsonData.db).to.eql('CONNECTED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Verifies API service status and PostgreSQL connectivity."
+          }
+        },
+        {
+          "name": "Central Bank Ceiling Rate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Returns valid regulatory ceiling rate in USD', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.ceilingRate).to.eql(5.5);",
+                  "    pm.expect(jsonData.currency).to.eql('USD');",
+                  "    pm.expect(jsonData.regulatoryBody).to.include('Central Reserve');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/central-bank/ceiling-rate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "central-bank", "ceiling-rate"]
+            },
+            "description": "Fetches the current Central Bank regulatory ceiling interest rate (5.50% USD)."
+          }
+        },
+        {
+          "name": "OpenAPI / Swagger JSON Spec",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Contains OpenAPI 3.0 specification', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.openapi).to.include('3.0');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api-docs.json",
+              "host": ["{{baseUrl}}"],
+              "path": ["api-docs.json"]
+            },
+            "description": "Retrieves the raw OpenAPI 3.0 specification JSON."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Authentication",
+      "item": [
+        {
+          "name": "Register New Client",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const uniqueUser = 'qa_user_' + Math.floor(Date.now() / 1000);",
+                  "pm.collectionVariables.set('username', uniqueUser);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Client and default Checking/Savings accounts created', function () {",
+                  "    pm.expect(jsonData.clientId).to.be.a('string');",
+                  "    pm.expect(jsonData.accounts).to.be.an('array').with.lengthOf(2);",
+                  "});",
+                  "",
+                  "if (jsonData.clientId) {",
+                  "    pm.collectionVariables.set('clientId', jsonData.clientId);",
+                  "}",
+                  "if (Array.isArray(jsonData.accounts)) {",
+                  "    const chk = jsonData.accounts.find(a => a.accountType === 'CHECKING');",
+                  "    const sav = jsonData.accounts.find(a => a.accountType === 'SAVINGS');",
+                  "    if (chk) pm.collectionVariables.set('checkingAccountId', chk.accountId);",
+                  "    if (sav) pm.collectionVariables.set('savingsAccountId', sav.accountId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"mobile\": \"+1-704-555-0199\",\n  \"address\": \"100 North Tryon St, Charlotte, NC 28202\",\n  \"initialCheckingBalance\": 2500.00,\n  \"initialSavingsBalance\": 5000.00,\n  \"savingsMarginTier\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Registers a new client with initial Checking and Savings accounts and stores `clientId`, `checkingAccountId`, and `savingsAccountId` in collection variables."
+          }
+        },
+        {
+          "name": "Login Client (Captures JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('JWT token returned and saved', function () {",
+                  "    pm.expect(jsonData.token).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('jwtToken', jsonData.token);",
+                  "    if (jsonData.client && jsonData.client.clientId) {",
+                  "        pm.collectionVariables.set('clientId', jsonData.client.clientId);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Authenticates the client and automatically saves the Bearer `jwtToken` to collection variables."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Client Profile",
+      "item": [
+        {
+          "name": "Get Client Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Profile matches clientId and username', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.clientId).to.eql(pm.collectionVariables.get('clientId'));",
+                  "    pm.expect(jsonData.username).to.eql(pm.collectionVariables.get('username'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/clients/{{clientId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "clients", "{{clientId}}"]
+            },
+            "description": "Retrieves the authenticated client's profile details."
+          }
+        },
+        {
+          "name": "Update Client Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Profile mobile and address updated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.eql('Profile updated successfully');",
+                  "    pm.expect(jsonData.mobile).to.eql('+1-704-555-0888');",
+                  "    pm.expect(jsonData.address).to.eql('200 South College St, Charlotte, NC 28202');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"+1-704-555-0888\",\n  \"address\": \"200 South College St, Charlotte, NC 28202\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/clients/{{clientId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "clients", "{{clientId}}"]
+            },
+            "description": "Updates the client's mobile phone and mailing address."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Accounts & ACID Transfers",
+      "item": [
+        {
+          "name": "Get All Client Accounts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const accounts = pm.response.json();",
+                  "pm.test('Returns array of accounts', function () {",
+                  "    pm.expect(accounts).to.be.an('array').that.is.not.empty;",
+                  "});",
+                  "",
+                  "if (Array.isArray(accounts)) {",
+                  "    const chk = accounts.find(a => a.accountType === 'CHECKING');",
+                  "    const sav = accounts.find(a => a.accountType === 'SAVINGS');",
+                  "    if (chk) pm.collectionVariables.set('checkingAccountId', chk.accountId);",
+                  "    if (sav) pm.collectionVariables.set('savingsAccountId', sav.accountId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts"]
+            },
+            "description": "Lists all accounts belonging to the authenticated client."
+          }
+        },
+        {
+          "name": "Create Additional Savings Account (Tier 2 Margin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Savings account created with valid interest rate', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.account.accountType).to.eql('SAVINGS');",
+                  "    pm.expect(Number(jsonData.account.interestRate)).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountType\": \"SAVINGS\",\n  \"initialBalance\": 1500.00,\n  \"marginTier\": 2\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts"]
+            },
+            "description": "Creates a new Savings account using Margin Tier 2 (Ceiling Rate - 2.00%)."
+          }
+        },
+        {
+          "name": "Transfer Funds (Checking -> Savings)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Transfer completed with transactionId and updated balances', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.eql('Transfer successful');",
+                  "    pm.expect(jsonData.transactionId).to.be.a('string');",
+                  "    pm.expect(jsonData.newSourceBalance).to.eql('2000.00');",
+                  "    pm.expect(jsonData.newDestinationBalance).to.eql('5500.00');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccountId\": \"{{checkingAccountId}}\",\n  \"toAccountId\": \"{{savingsAccountId}}\",\n  \"amount\": 500.00\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/transfer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts", "transfer"]
+            },
+            "description": "Executes an atomic ACID fund transfer of $500.00 from Checking to Savings."
+          }
+        },
+        {
+          "name": "Get Checking Account Details & Ledger History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Includes DEBIT transaction in ledger history', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.accountId).to.eql(pm.collectionVariables.get('checkingAccountId'));",
+                  "    pm.expect(jsonData.transactions).to.be.an('array').that.is.not.empty;",
+                  "    pm.expect(jsonData.transactions[0].direction).to.eql('DEBIT');",
+                  "    pm.expect(jsonData.transactions[0].amount).to.eql('500.00');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/{{checkingAccountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts", "{{checkingAccountId}}"]
+            },
+            "description": "Retrieves Checking account metadata and recent transaction history."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Negative & Boundary Tests",
+      "item": [
+        {
+          "name": "Transfer Insufficient Funds (400 Bad Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message indicates insufficient funds', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.eql('Insufficient funds in source account');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccountId\": \"{{checkingAccountId}}\",\n  \"toAccountId\": \"{{savingsAccountId}}\",\n  \"amount\": 999999.99\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/transfer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts", "transfer"]
+            },
+            "description": "Verifies that transferring an amount exceeding the source balance fails with 400 and rolls back."
+          }
+        },
+        {
+          "name": "Transfer to Same Account (400 Bad Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Rejects identical source and destination accounts', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.eql('Source and destination accounts cannot be the same');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromAccountId\": \"{{checkingAccountId}}\",\n  \"toAccountId\": \"{{checkingAccountId}}\",\n  \"amount\": 50.00\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts/transfer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts", "transfer"]
+            }
+          }
+        },
+        {
+          "name": "Unauthorized Access Without Token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "accounts"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Teardown / Cleanup",
+      "item": [
+        {
+          "name": "Delete Client & Associated Accounts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Client deleted confirmation', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.eql('Client and associated accounts deleted successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{jwtToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/clients/{{clientId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "clients", "{{clientId}}"]
+            },
+            "description": "Deletes the test client and cascades deletion to associated accounts and transactions."
+          }
+        }
+      ]
+    }
+  ]
+}
